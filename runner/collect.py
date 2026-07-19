@@ -103,6 +103,57 @@ def collect_tb(lane_dir: Path):
     return rows
 
 
+def _train_eal(vals: dict):
+    """Train EAL from end-of-epoch train metrics: direct tag or derive from cond_acc."""
+    if "train/eal" in vals:
+        return vals["train/eal"]
+    ks = sorted(
+        int(m.group(1)) for t in vals if (m := re.fullmatch(r"train/cond_acc_(\d+)", t))
+    )
+    if not ks:
+        return None
+    eal, cum = 0.0, 1.0
+    for k in ks:
+        cum *= vals[f"train/cond_acc_{k}"]
+        eal += cum
+    return eal
+
+
+def train_by_epoch(tb: list, epochs: int):
+    """Per-epoch TRAIN eal/loss/profile from tb, using the end-of-epoch step.
+
+    The trainer logs train metrics per step with no epoch tag, so bin steps into
+    epochs by (max_step+1)/epochs and take each epoch's last observed value.
+    This is the running train fit — the train-vs-val gap is the generalization
+    signal (contract §4).
+    """
+    train = [r for r in tb if r["tag"].startswith("train/")]
+    if not train or not epochs:
+        return []
+    max_step = max(r["step"] for r in train)
+    spe = max(1, round((max_step + 1) / epochs))
+    by_ep: dict[int, dict] = {}
+    for r in train:
+        ep = min(r["step"] // spe, epochs - 1)
+        slot = by_ep.setdefault(ep, {})
+        prev = slot.get(r["tag"])
+        if prev is None or r["step"] >= prev[0]:
+            slot[r["tag"]] = (r["step"], r["value"])
+    out = []
+    for ep in sorted(by_ep):
+        vals = {t: v for t, (s, v) in by_ep[ep].items()}
+        prof = {
+            t.replace("train/", "") + "_epoch": v
+            for t, v in vals.items()
+            if re.fullmatch(r"train/(cond_acc_\d+|position_\d+_acc)", t)
+        }
+        out.append({
+            "epoch": ep, "eal": _train_eal(vals),
+            "loss": vals.get("train/loss"), "profile": prof,
+        })
+    return out
+
+
 def collect_mem(lane_dir: Path):
     """Peak used-MiB per gpu + a downsampled series."""
     path = lane_dir / "mem.jsonl"
@@ -155,6 +206,9 @@ def summarize_lane(run: Path, lane: str, timing: dict) -> dict:
         best = min(losses, key=lambda x: x[0])[1]
     final = val_by_epoch[-1] if val_by_epoch else None
 
+    # train-set fit (running, from tb) — the train-vs-val gap is generalization
+    train_ep = train_by_epoch(tb, cfg.get("epochs") or 0)
+
     return {
         "lane": lane,
         "config": cfg,
@@ -167,6 +221,8 @@ def summarize_lane(run: Path, lane: str, timing: dict) -> dict:
         "val_best": best,
         "val_final": final,
         "val_by_epoch": val_by_epoch,
+        "train_by_epoch": train_ep,
+        "train_final": train_ep[-1] if train_ep else None,
         "n_train_points": sum(1 for r in tb if r["tag"].endswith("loss")),
         "status": "ok" if val_by_epoch else "no_val_metrics",
     }

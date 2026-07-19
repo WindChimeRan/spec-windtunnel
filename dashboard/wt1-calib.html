@@ -112,7 +112,7 @@
   </section>
 
   <section>
-    <div class="shead"><h2>Learning curves</h2><span class="note">EAL vs epoch · curve flattens = approaching this data's ceiling</span></div>
+    <div class="shead"><h2>Learning curves</h2><span class="note">train (fit) vs val (held-out) EAL per epoch · the gap is the generalization deficit</span></div>
     <div class="cards" id="curves"></div>
   </section>
 
@@ -133,11 +133,13 @@
 const RUN={id:"20260719-think-10ep",spec:"9b74129",wt:"8934ea0",convs:2000,samples:6000,
   epochs:10,seq:16384,thinking:true,loss:'{"ce":0.1,"tv":0.9}',verifier:"Qwen/Qwen3-8B"};
 const LANES=[
- {name:"eagle3",status:"ok",lr:"1e-4",eal:1.188,bestEp:7,loss:2.443,mem:27979,time:4829,
-  epochs:[[0,0.876,2.9311],[1,0.982,2.7233],[2,1.051,2.6209],[3,1.094,2.5556],[4,1.131,2.5049],[5,1.156,2.4721],[6,1.176,2.4542],[7,1.188,2.4426]],
+ {name:"eagle3",status:"ok",lr:"1e-4",eal:1.188,bestEp:7,loss:2.443,mem:27979,time:4829,trainEal:1.834,
+  val:[[0,0.876],[1,0.982],[2,1.051],[3,1.094],[4,1.131],[5,1.156],[6,1.176],[7,1.188]],
+  train:[[0,0.908],[1,1.003],[2,1.170],[3,1.176],[4,1.300],[5,1.635],[6,1.613],[7,1.702],[8,1.812],[9,1.834]],
   profLabel:"depth",prof:[["d0",0.630],["d1",0.567],["d2",0.562]]},
- {name:"dflash",status:"ok",lr:"3e-4",eal:1.159,bestEp:5,loss:0.471,mem:39669,time:13332,
-  epochs:[[0,0.781,0.5715],[1,0.945,0.5217],[2,1.038,0.4974],[3,1.092,0.4831],[4,1.137,0.4740],[5,1.159,0.4707]],
+ {name:"dflash",status:"ok",lr:"3e-4",eal:1.159,bestEp:5,loss:0.471,mem:39669,time:13332,trainEal:3.102,
+  val:[[0,0.781],[1,0.945],[2,1.038],[3,1.092],[4,1.137],[5,1.159]],
+  train:[[0,0.789],[1,0.946],[2,1.139],[3,1.219],[4,1.422],[5,1.946],[6,2.227],[7,2.533],[8,2.864],[9,3.102]],
   profLabel:"position",prof:[["p1",0.676],["p2",0.480],["p3",0.354],["p4",0.265],["p5",0.203],["p6",0.162],["p7",0.133]]},
  {name:"dspark",status:"failed",lr:"3e-4",time:166,
   err:"RuntimeError: aten.add_.Tensor in-place op unsupported under FSDP2 sharding\n  bf16[1,4352]  Shard(0) vs Replicate  on DeviceMesh((2,))\nMarkov/confidence head is not multi-GPU-safe at this ref.\ndspark's own example runs on 1 GPU — needs a 1-GPU lane or an out-of-place fix."}
@@ -171,27 +173,25 @@ let rows=LANES.map(l=>{
 document.getElementById("board").innerHTML=
   "<thead>"+th("lane","status","EAL·best","ep","val loss","peak mem","train time","lr")+"</thead><tbody>"+rows+"</tbody>";
 
-// line chart: EAL vs epoch
+// line chart: train + val EAL vs epoch
 function curve(l){
-  const W=440,H=170,pl=34,pr=14,pt=14,pb=26;
-  const eps=l.epochs.map(e=>e[0]),vals=l.epochs.map(e=>e[1]);
-  const xmin=0,xmax=RUN.epochs-1,ymin=0.7,ymax=1.3;
-  const X=x=>pl+(x-xmin)/(xmax-xmin)*(W-pl-pr);
+  const W=440,H=190,pl=34,pr=14,pt=12,pb=26;
+  const all=[...l.val.map(e=>e[1]),...l.train.map(e=>e[1])];
+  const xmax=RUN.epochs-1, ymin=0.7, ymax=Math.max(2.0,Math.ceil(Math.max(...all)*10)/10+0.1);
+  const X=x=>pl+x/xmax*(W-pl-pr);
   const Y=y=>pt+(1-(y-ymin)/(ymax-ymin))*(H-pt-pb);
   const s=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
-  // grid + y ticks
-  [0.8,0.9,1.0,1.1,1.2].forEach(gy=>{
-    s.append(el("line",{x1:pl,y1:Y(gy),x2:W-pr,y2:Y(gy),stroke:"var(--grid)","stroke-width":1}));
-    s.append(el("text",{x:pl-7,y:Y(gy)+3,"text-anchor":"end",fill:"var(--faint)","font-size":9,"font-family":"var(--mono)"},gy.toFixed(1)));
-  });
-  // x ticks
-  eps.forEach(e=>s.append(el("text",{x:X(e),y:H-8,"text-anchor":"middle",fill:"var(--faint)","font-size":9,"font-family":"var(--mono)"},e)));
-  // full 10-epoch span marker (where it stopped improving)
-  s.append(el("line",{x1:X(l.bestEp),y1:pt,x2:X(l.bestEp),y2:H-pb,stroke:"var(--flow)","stroke-width":1,"stroke-dasharray":"3 3",opacity:.5}));
-  // line
-  const pts=l.epochs.map(e=>`${X(e[0])},${Y(e[1])}`).join(" ");
-  s.append(el("polyline",{points:pts,fill:"none",stroke:"var(--accent)","stroke-width":2.2,"stroke-linejoin":"round","stroke-linecap":"round"}));
-  l.epochs.forEach(e=>s.append(el("circle",{cx:X(e[0]),cy:Y(e[1]),r:e[0]===l.bestEp?4:2.6,fill:e[0]===l.bestEp?"var(--flow)":"var(--accent)"})));
+  for(let g=Math.ceil(ymin*2)/2; g<=ymax+1e-9; g+=0.5){
+    s.append(el("line",{x1:pl,y1:Y(g),x2:W-pr,y2:Y(g),stroke:"var(--grid)","stroke-width":1}));
+    s.append(el("text",{x:pl-7,y:Y(g)+3,"text-anchor":"end",fill:"var(--faint)","font-size":9,"font-family":"var(--mono)"},g.toFixed(1)));
+  }
+  for(let e=0;e<=xmax;e++) s.append(el("text",{x:X(e),y:H-8,"text-anchor":"middle",fill:"var(--faint)","font-size":9,"font-family":"var(--mono)"},e));
+  // train (dashed, warm) — runs the full 10 epochs
+  s.append(el("polyline",{points:l.train.map(e=>`${X(e[0])},${Y(e[1])}`).join(" "),fill:"none",stroke:"var(--warn)","stroke-width":1.8,"stroke-dasharray":"4 3","stroke-linejoin":"round"}));
+  l.train.forEach(e=>s.append(el("circle",{cx:X(e[0]),cy:Y(e[1]),r:1.9,fill:"var(--warn)"})));
+  // val (solid accent) — only through best-val-loss epoch
+  s.append(el("polyline",{points:l.val.map(e=>`${X(e[0])},${Y(e[1])}`).join(" "),fill:"none",stroke:"var(--accent)","stroke-width":2.4,"stroke-linejoin":"round","stroke-linecap":"round"}));
+  l.val.forEach(e=>s.append(el("circle",{cx:X(e[0]),cy:Y(e[1]),r:e[0]===l.bestEp?4:2.6,fill:e[0]===l.bestEp?"var(--flow)":"var(--accent)"})));
   return s;
 }
 const cwrap=document.getElementById("curves");
@@ -200,16 +200,16 @@ LANES.forEach(l=>{
   if(l.status!=="ok"){card.className="card blocked";
     card.innerHTML=`<div class="ch"><h3>${l.name}</h3><span class="lr">crashed ${hms(l.time)} in</span></div>
       <div class="err">${l.err}</div>`;cwrap.append(card);return;}
-  card.innerHTML=`<div class="ch"><h3>${l.name}</h3><span class="lr">lr ${l.lr}</span></div>
+  card.innerHTML=`<div class="ch"><h3>${l.name}</h3><span class="lr">lr ${l.lr} · ${gib(l.mem)} · ${hms(l.time)}</span></div>
     <div class="kpis">
-      <div class="kpi"><div class="v accent">${fmt(l.eal)}</div><div class="k">EAL best</div></div>
-      <div class="kpi"><div class="v">${gib(l.mem)}</div><div class="k">peak mem</div></div>
-      <div class="kpi"><div class="v">${hms(l.time)}</div><div class="k">10 epochs</div></div>
+      <div class="kpi"><div class="v accent">${fmt(l.eal)}</div><div class="k">val EAL</div></div>
+      <div class="kpi"><div class="v" style="color:var(--warn)">${fmt(l.trainEal)}</div><div class="k">train EAL</div></div>
+      <div class="kpi"><div class="v">+${fmt(l.trainEal-l.eal)}</div><div class="k">gen. gap</div></div>
     </div>
-    <div class="legend"><span><i style="background:var(--accent)"></i>EAL</span><span><i style="background:var(--flow);height:0;border-top:1px dashed var(--flow)"></i>best epoch ${l.bestEp} (val loss stopped improving)</span></div>`;
+    <div class="legend"><span><i style="background:var(--accent)"></i>val · held-out</span><span><i style="background:var(--warn);height:0;border-top:2px dashed var(--warn)"></i>train · fit</span></div>`;
   const fig=document.createElement("figure");
   fig.append(curve(l));
-  fig.append(Object.assign(document.createElement("figcaption"),{textContent:`epochs 0–${l.epochs.length-1} of ${RUN.epochs} · later epochs overfit (not saved)`}));
+  fig.append(Object.assign(document.createElement("figcaption"),{textContent:`train climbs all 10 epochs; val (held-out) flattens by ep ${l.bestEp} then overfits — the gap is the generalization deficit`}));
   card.append(fig);cwrap.append(card);
 });
 
@@ -230,10 +230,10 @@ LANES.filter(l=>l.status==="ok").forEach(l=>{
 
 // findings
 const F=[
- ["data-limited, not epoch-limited","Both lanes' EAL flattens and val loss stops improving by epoch 5–7 of 10 — then overfits. More epochs barely moved EAL (eagle3 1.16→1.19). The lever for a stronger board baseline is <b>more data</b>, not more epochs."],
- ["hidden-state caching works — but isn't the bottleneck","Cross-lane cache sharing was confirmed (dflash reused eagle3's cache, no regeneration). But dflash's epochs are flat at ~1320s whether generating or reading cache — its cost is <b>draft compute</b> (~3× eagle3), so the cache helps eagle3 most. Matrix ran ~9 h, not the ~3 h I estimated."],
- ["dspark needs a 1-GPU lane (or an upstream fix)","dspark crashed under 2-GPU FSDP2 on an in-place <span style='font-family:var(--mono)'>add_</span> in its Markov/confidence head. Its own example runs single-GPU. Either give dspark a 1-GPU lane or fix the op out-of-place upstream."],
- ["eagle3 vs dflash at this scale","Comparable EAL (1.19 vs 1.16), but eagle3 is lighter on both memory (28 vs 40 GB) and time (1.3 vs 3.7 h). dflash's accept profile shows the deeper block: it still accepts p7 at 0.13, where eagle3 only drafts 3 deep."]
+ ["capacity is fine — the data isn't","The train curves are the story: dflash fits the <b>training</b> set to EAL <b>3.10</b> while held-out val stalls at 1.16 (gap +1.9); eagle3 reaches train 1.83 vs val 1.19. The drafters clearly <b>can</b> learn — they overfit 2K conversations. So the bottleneck is generalization, and the lever is <b>more data</b>, not more epochs or bigger heads."],
+ ["hidden-state caching works — but isn't the bottleneck","Cross-lane cache sharing confirmed (dflash reused eagle3's cache, no regeneration). But dflash's epochs are flat at ~1320s whether generating or reading — its cost is <b>draft compute</b> (~3× eagle3), so caching helps eagle3 most. Full matrix ran ~9 h."],
+ ["dspark crash is real, two layers deep","Not dspark's code. PyTorch's Muon does an in-place <span style='font-family:var(--mono)'>add_</span> on the confidence head's <span style='font-family:var(--mono)'>[1,4352]</span> param — a <b>vector</b> — which DTensor can't shard under 2-GPU FSDP2. A real PyTorch-Muon gap (worth an upstream issue); speculators also shouldn't route vectors to Muon (the correct fix). 1-GPU unblocks it now."],
+ ["eagle3 vs dflash at this scale","Comparable val EAL (1.19 vs 1.16), but eagle3 is lighter on memory (28 vs 40 GB) and time (1.3 vs 3.7 h). dflash's profile shows the deeper block — still accepting p7 at 0.13 where eagle3 only drafts 3 deep."]
 ];
 document.getElementById("findings").innerHTML=F.map(([h,b])=>`<li><span class="lead">${h}</span>${b}</li>`).join("");
 
