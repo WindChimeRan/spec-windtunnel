@@ -37,8 +37,13 @@ what the Markov + confidence heads buy.
   **manifest** (conversation ids + sha256) is committed. The data itself lives on
   disk, never in git.
 - **On-policy regeneration**: every row trains on regenerated data — assistant turns
-  re-written by the lane's verifier. Regen params (temperature, top-p, max tokens,
-  seed) pinned ⏳. Regen output is cached on disk keyed by
+  re-written by the lane's verifier. Frozen regen params: `temperature 0.6,
+  top_p 0.95, seed 0, max_tokens 2048`, and **`enable_thinking: false`** — Qwen3-8B
+  is a reasoning model, and left on it emits long `<think>` traces that blow past
+  `max_tokens` (truncating mid-thought) and train the drafter on reasoning tokens
+  we don't serve. WT-1 regenerates non-thinking, direct answers. (~15% of long
+  UltraChat turns still hit the 2048 cap; consistent across rows, so fine for a
+  relative board.) Regen output is cached on disk keyed by
   `(verifier revision, manifest hash, regen params, regen-code fingerprint)`;
   a training-only PR reuses the cache, a data-pipeline PR misses it and pays.
   All three lanes share one verifier, so one regen artifact serves the whole board.
