@@ -1,0 +1,1 @@
+{"lane":"dspark","epochs":10,"max_samples":6000,"extra":"--lr 3e-4 --speculator-type dspark --block-size 8 --max-anchors 3072 --num-layers 5 --target-layer-ids 2 18 33 --markov-rank 256 --markov-head-type vanilla --confidence-head-alpha 1.0"}

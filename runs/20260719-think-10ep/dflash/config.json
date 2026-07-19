@@ -1,0 +1,1 @@
+{"lane":"dflash","epochs":10,"max_samples":6000,"extra":"--lr 3e-4 --speculator-type dflash --block-size 8 --max-anchors 3072 --num-layers 5 --target-layer-ids 2 18 33"}

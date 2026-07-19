@@ -1,0 +1,242 @@
+<title>spec-windtunnel · WT-1 calibration</title>
+<style>
+  :root{
+    --bg:#f5f7f9; --panel:#ffffff; --panel2:#eef2f5; --bd:#d3dbe2; --bd2:#e3e9ee;
+    --ink:#141a1f; --mut:#5a6672; --faint:#8b98a5;
+    --accent:#0e7fb8; --accent-ink:#0a5f8a; --flow:#12a3c9;
+    --good:#1a7f37; --warn:#9a6700; --bad:#c8362b;
+    --grid:#e7edf1;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0b0f13; --panel:#12181e; --panel2:#161d24; --bd:#232d36; --bd2:#1b232b;
+      --ink:#e6edf3; --mut:#93a1ad; --faint:#63707c;
+      --accent:#38bdf8; --accent-ink:#7dd3fc; --flow:#22d3ee;
+      --good:#3fb950; --warn:#d29922; --bad:#f0796f;
+      --grid:#1c242c;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f5f7f9; --panel:#ffffff; --panel2:#eef2f5; --bd:#d3dbe2; --bd2:#e3e9ee;
+    --ink:#141a1f; --mut:#5a6672; --faint:#8b98a5; --accent:#0e7fb8; --accent-ink:#0a5f8a;
+    --flow:#12a3c9; --good:#1a7f37; --warn:#9a6700; --bad:#c8362b; --grid:#e7edf1;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b0f13; --panel:#12181e; --panel2:#161d24; --bd:#232d36; --bd2:#1b232b;
+    --ink:#e6edf3; --mut:#93a1ad; --faint:#63707c; --accent:#38bdf8; --accent-ink:#7dd3fc;
+    --flow:#22d3ee; --good:#3fb950; --warn:#d29922; --bad:#f0796f; --grid:#1c242c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  h1,h2,h3{margin:0;font-weight:640;letter-spacing:-.01em;text-wrap:balance}
+  a{color:var(--accent)}
+
+  header.top{border-bottom:1px solid var(--bd);padding-bottom:20px;margin-bottom:28px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--flow);margin-bottom:8px}
+  h1{font-size:26px}
+  .sub{color:var(--mut);margin-top:6px;font-size:14px}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+  .chip{font-family:var(--mono);font-size:12px;padding:3px 9px;border:1px solid var(--bd);
+    border-radius:5px;background:var(--panel);color:var(--mut)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  section{margin-top:34px}
+  .shead{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+  h2{font-size:15px;font-family:var(--mono);letter-spacing:.02em;text-transform:uppercase;color:var(--ink)}
+  .shead .note{font-size:13px;color:var(--faint)}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  .tscroll{overflow-x:auto;border:1px solid var(--bd);border-radius:9px;background:var(--panel)}
+  th,td{padding:11px 14px;text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--mut);font-weight:600;border-bottom:1px solid var(--bd)}
+  tbody tr+tr td{border-top:1px solid var(--bd2)}
+  tbody td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  td.lane{font-weight:640;font-family:var(--sans)}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600}
+  .pill.ok{color:var(--good);background:color-mix(in srgb,var(--good) 15%,transparent)}
+  .pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 15%,transparent)}
+  .bestcell{color:var(--accent-ink);font-weight:640}
+
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.cards{grid-template-columns:1fr}}
+  .card{border:1px solid var(--bd);border-radius:11px;background:var(--panel);padding:18px 18px 14px}
+  .card .ch{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+  .card h3{font-size:16px}
+  .card .lr{font-family:var(--mono);font-size:12px;color:var(--faint)}
+  .kpis{display:flex;gap:18px;margin:10px 0 14px}
+  .kpi .v{font-family:var(--mono);font-size:22px;font-weight:640;font-variant-numeric:tabular-nums;line-height:1}
+  .kpi .k{font-size:11px;color:var(--mut);font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;margin-top:4px}
+  .kpi .v.accent{color:var(--accent)}
+  figure{margin:0}
+  figcaption{font-size:11px;color:var(--faint);font-family:var(--mono);margin:2px 0 10px;letter-spacing:.03em;text-transform:uppercase}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .prof{margin-top:14px}
+  .bar-row{display:grid;grid-template-columns:34px 1fr 46px;align-items:center;gap:8px;margin:5px 0}
+  .bar-row .bl{font-family:var(--mono);font-size:11px;color:var(--mut)}
+  .bar-track{height:9px;background:var(--panel2);border-radius:5px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),var(--flow))}
+  .bar-row .bv{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+
+  .card.blocked{border-color:color-mix(in srgb,var(--bad) 45%,var(--bd))}
+  .blocked .err{font-family:var(--mono);font-size:12px;color:var(--bad);background:color-mix(in srgb,var(--bad) 9%,transparent);
+    border:1px solid color-mix(in srgb,var(--bad) 30%,transparent);border-radius:7px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;line-height:1.45}
+
+  .findings{border:1px solid var(--bd);border-left:3px solid var(--flow);border-radius:9px;background:var(--panel);padding:4px 20px}
+  .findings li{margin:14px 0;color:var(--ink)}
+  .findings li b{color:var(--accent-ink)}
+  .findings li .lead{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--flow);display:block;margin-bottom:2px}
+  footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--bd);color:var(--faint);font-size:12px;font-family:var(--mono)}
+  .legend{display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--mut);margin-bottom:6px}
+  .legend i{display:inline-block;width:20px;height:2px;vertical-align:middle;margin-right:5px}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">spec-windtunnel · unofficial drafter leaderboard</div>
+    <h1>WT-1 calibration — 10-epoch, thinking-on</h1>
+    <div class="sub">On-policy multi-turn UltraChat · Qwen3-8B verifier · one shared, cached hidden-state set across all lanes.</div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <section>
+    <div class="shead"><h2>Leaderboard</h2><span class="note">headline = expected accepted length (EAL) at best val-loss epoch · higher is better</span></div>
+    <div class="tscroll"><table id="board"></table></div>
+  </section>
+
+  <section>
+    <div class="shead"><h2>Learning curves</h2><span class="note">EAL vs epoch · curve flattens = approaching this data's ceiling</span></div>
+    <div class="cards" id="curves"></div>
+  </section>
+
+  <section>
+    <div class="shead"><h2>Acceptance profile</h2><span class="note">per-depth / per-position accept rate at the best epoch — the checkpoint's real shape</span></div>
+    <div class="cards" id="profiles"></div>
+  </section>
+
+  <section>
+    <div class="shead"><h2>Read-out</h2><span class="note">what this run tells us</span></div>
+    <ul class="findings" id="findings"></ul>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const RUN={id:"20260719-think-10ep",spec:"9b74129",wt:"8934ea0",convs:2000,samples:6000,
+  epochs:10,seq:16384,thinking:true,loss:'{"ce":0.1,"tv":0.9}',verifier:"Qwen/Qwen3-8B"};
+const LANES=[
+ {name:"eagle3",status:"ok",lr:"1e-4",eal:1.188,bestEp:7,loss:2.443,mem:27979,time:4829,
+  epochs:[[0,0.876,2.9311],[1,0.982,2.7233],[2,1.051,2.6209],[3,1.094,2.5556],[4,1.131,2.5049],[5,1.156,2.4721],[6,1.176,2.4542],[7,1.188,2.4426]],
+  profLabel:"depth",prof:[["d0",0.630],["d1",0.567],["d2",0.562]]},
+ {name:"dflash",status:"ok",lr:"3e-4",eal:1.159,bestEp:5,loss:0.471,mem:39669,time:13332,
+  epochs:[[0,0.781,0.5715],[1,0.945,0.5217],[2,1.038,0.4974],[3,1.092,0.4831],[4,1.137,0.4740],[5,1.159,0.4707]],
+  profLabel:"position",prof:[["p1",0.676],["p2",0.480],["p3",0.354],["p4",0.265],["p5",0.203],["p6",0.162],["p7",0.133]]},
+ {name:"dspark",status:"failed",lr:"3e-4",time:166,
+  err:"RuntimeError: aten.add_.Tensor in-place op unsupported under FSDP2 sharding\n  bf16[1,4352]  Shard(0) vs Replicate  on DeviceMesh((2,))\nMarkov/confidence head is not multi-GPU-safe at this ref.\ndspark's own example runs on 1 GPU — needs a 1-GPU lane or an out-of-place fix."}
+];
+const fmt=(x,n=3)=>x==null?"—":x.toFixed(n);
+const hms=s=>s==null?"—":(s>=3600?(s/3600).toFixed(1)+" h":Math.round(s/60)+" min");
+const gib=m=>m==null?"—":(m/1024).toFixed(1)+" GB";
+const NS="http://www.w3.org/2000/svg";
+const el=(t,a={},kids=[])=>{const e=document.createElementNS(t==="svg"||t==="path"||t==="line"||t==="circle"||t==="text"||t==="polyline"||t==="rect"?NS:null,t);for(const k in a)e.setAttribute(k,a[k]);for(const c of[].concat(kids))e.append(c);return e};
+
+// chips
+document.getElementById("chips").innerHTML=[
+ ["spec",RUN.spec],["windtunnel",RUN.wt],["convs",RUN.convs],["train rows",RUN.samples],
+ ["epochs",RUN.epochs],["seq",RUN.seq],["thinking",RUN.thinking?"on":"off"],["loss",RUN.loss]
+].map(([k,v])=>`<span class="chip">${k} <b>${v}</b></span>`).join("");
+
+// leaderboard
+const th=(...c)=>"<tr>"+c.map((x,i)=>`<th>${x}</th>`).join("")+"</tr>";
+let rows=LANES.map(l=>{
+  const ok=l.status==="ok";
+  return `<tr>
+    <td class="lane">${l.name}</td>
+    <td>${ok?`<span class="pill ok">ok</span>`:`<span class="pill bad">failed</span>`}</td>
+    <td class="bestcell">${ok?fmt(l.eal):"—"}</td>
+    <td>${ok?l.bestEp:"—"}</td>
+    <td>${ok?fmt(l.loss,3):"—"}</td>
+    <td>${gib(l.mem)}</td>
+    <td>${hms(l.time)}</td>
+    <td>${l.lr}</td></tr>`;
+}).join("");
+document.getElementById("board").innerHTML=
+  "<thead>"+th("lane","status","EAL·best","ep","val loss","peak mem","train time","lr")+"</thead><tbody>"+rows+"</tbody>";
+
+// line chart: EAL vs epoch
+function curve(l){
+  const W=440,H=170,pl=34,pr=14,pt=14,pb=26;
+  const eps=l.epochs.map(e=>e[0]),vals=l.epochs.map(e=>e[1]);
+  const xmin=0,xmax=RUN.epochs-1,ymin=0.7,ymax=1.3;
+  const X=x=>pl+(x-xmin)/(xmax-xmin)*(W-pl-pr);
+  const Y=y=>pt+(1-(y-ymin)/(ymax-ymin))*(H-pt-pb);
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
+  // grid + y ticks
+  [0.8,0.9,1.0,1.1,1.2].forEach(gy=>{
+    s.append(el("line",{x1:pl,y1:Y(gy),x2:W-pr,y2:Y(gy),stroke:"var(--grid)","stroke-width":1}));
+    s.append(el("text",{x:pl-7,y:Y(gy)+3,"text-anchor":"end",fill:"var(--faint)","font-size":9,"font-family":"var(--mono)"},gy.toFixed(1)));
+  });
+  // x ticks
+  eps.forEach(e=>s.append(el("text",{x:X(e),y:H-8,"text-anchor":"middle",fill:"var(--faint)","font-size":9,"font-family":"var(--mono)"},e)));
+  // full 10-epoch span marker (where it stopped improving)
+  s.append(el("line",{x1:X(l.bestEp),y1:pt,x2:X(l.bestEp),y2:H-pb,stroke:"var(--flow)","stroke-width":1,"stroke-dasharray":"3 3",opacity:.5}));
+  // line
+  const pts=l.epochs.map(e=>`${X(e[0])},${Y(e[1])}`).join(" ");
+  s.append(el("polyline",{points:pts,fill:"none",stroke:"var(--accent)","stroke-width":2.2,"stroke-linejoin":"round","stroke-linecap":"round"}));
+  l.epochs.forEach(e=>s.append(el("circle",{cx:X(e[0]),cy:Y(e[1]),r:e[0]===l.bestEp?4:2.6,fill:e[0]===l.bestEp?"var(--flow)":"var(--accent)"})));
+  return s;
+}
+const cwrap=document.getElementById("curves");
+LANES.forEach(l=>{
+  const card=document.createElement("div");card.className="card";
+  if(l.status!=="ok"){card.className="card blocked";
+    card.innerHTML=`<div class="ch"><h3>${l.name}</h3><span class="lr">crashed ${hms(l.time)} in</span></div>
+      <div class="err">${l.err}</div>`;cwrap.append(card);return;}
+  card.innerHTML=`<div class="ch"><h3>${l.name}</h3><span class="lr">lr ${l.lr}</span></div>
+    <div class="kpis">
+      <div class="kpi"><div class="v accent">${fmt(l.eal)}</div><div class="k">EAL best</div></div>
+      <div class="kpi"><div class="v">${gib(l.mem)}</div><div class="k">peak mem</div></div>
+      <div class="kpi"><div class="v">${hms(l.time)}</div><div class="k">10 epochs</div></div>
+    </div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>EAL</span><span><i style="background:var(--flow);height:0;border-top:1px dashed var(--flow)"></i>best epoch ${l.bestEp} (val loss stopped improving)</span></div>`;
+  const fig=document.createElement("figure");
+  fig.append(curve(l));
+  fig.append(Object.assign(document.createElement("figcaption"),{textContent:`epochs 0–${l.epochs.length-1} of ${RUN.epochs} · later epochs overfit (not saved)`}));
+  card.append(fig);cwrap.append(card);
+});
+
+// profiles
+const pwrap=document.getElementById("profiles");
+LANES.filter(l=>l.status==="ok").forEach(l=>{
+  const card=document.createElement("div");card.className="card";
+  const max=Math.max(...l.prof.map(p=>p[1]));
+  card.innerHTML=`<div class="ch"><h3>${l.name}</h3><span class="lr">${l.profLabel} · best ep ${l.bestEp}</span></div>`;
+  const box=document.createElement("div");box.className="prof";
+  l.prof.forEach(([lab,v])=>{
+    const r=document.createElement("div");r.className="bar-row";
+    r.innerHTML=`<span class="bl">${lab}</span><div class="bar-track"><div class="bar-fill" style="width:${(v/1*100).toFixed(1)}%"></div></div><span class="bv">${v.toFixed(3)}</span>`;
+    box.append(r);
+  });
+  card.append(box);pwrap.append(card);
+});
+
+// findings
+const F=[
+ ["data-limited, not epoch-limited","Both lanes' EAL flattens and val loss stops improving by epoch 5–7 of 10 — then overfits. More epochs barely moved EAL (eagle3 1.16→1.19). The lever for a stronger board baseline is <b>more data</b>, not more epochs."],
+ ["hidden-state caching works — but isn't the bottleneck","Cross-lane cache sharing was confirmed (dflash reused eagle3's cache, no regeneration). But dflash's epochs are flat at ~1320s whether generating or reading cache — its cost is <b>draft compute</b> (~3× eagle3), so the cache helps eagle3 most. Matrix ran ~9 h, not the ~3 h I estimated."],
+ ["dspark needs a 1-GPU lane (or an upstream fix)","dspark crashed under 2-GPU FSDP2 on an in-place <span style='font-family:var(--mono)'>add_</span> in its Markov/confidence head. Its own example runs single-GPU. Either give dspark a 1-GPU lane or fix the op out-of-place upstream."],
+ ["eagle3 vs dflash at this scale","Comparable EAL (1.19 vs 1.16), but eagle3 is lighter on both memory (28 vs 40 GB) and time (1.3 vs 3.7 h). dflash's accept profile shows the deeper block: it still accepts p7 at 0.13, where eagle3 only drafts 3 deep."]
+];
+document.getElementById("findings").innerHTML=F.map(([h,b])=>`<li><span class="lead">${h}</span>${b}</li>`).join("");
+
+document.getElementById("foot").textContent=
+  `run ${RUN.id} · speculators ${RUN.spec} · windtunnel ${RUN.wt} · ${RUN.verifier} · generated from board.json`;
+</script>
