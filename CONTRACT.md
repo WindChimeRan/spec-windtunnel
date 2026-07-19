@@ -38,12 +38,11 @@ what the Markov + confidence heads buy.
   disk, never in git.
 - **On-policy regeneration**: every row trains on regenerated data — assistant turns
   re-written by the lane's verifier. Frozen regen params: `temperature 0.6,
-  top_p 0.95, seed 0, max_tokens 2048`, and **`enable_thinking: false`** — Qwen3-8B
-  is a reasoning model, and left on it emits long `<think>` traces that blow past
-  `max_tokens` (truncating mid-thought) and train the drafter on reasoning tokens
-  we don't serve. WT-1 regenerates non-thinking, direct answers. (~15% of long
-  UltraChat turns still hit the 2048 cap; consistent across rows, so fine for a
-  relative board.) Regen output is cached on disk keyed by
+  top_p 0.95, seed 0, max_tokens 4096`, and **`enable_thinking: true`** — Qwen3-8B
+  is a reasoning model; if the target serves with thinking on, the drafter must
+  learn to draft `<think>` tokens too, so WT-1 regenerates *with* thinking. This is
+  the heavier choice (long generations), which is why `max_tokens`, `seq_length`,
+  and the regen budget are all larger. Regen output is cached on disk keyed by
   `(verifier revision, manifest hash, regen params, regen-code fingerprint)`;
   a training-only PR reuses the cache, a data-pipeline PR misses it and pays.
   All three lanes share one verifier, so one regen artifact serves the whole board.
@@ -75,7 +74,7 @@ Per-lane:
 | | eagle3 | dflash | dspark |
 |---|---|---|---|
 | lr / muon-lr | 1e-4 / 1e-3 | 3e-4 / 3e-3 | 3e-4 / 3e-3 |
-| seq length | 8192 | 8192 | 8192 |
+| seq length | 16384 | 16384 | 16384 |
 | block size | — | 8 | 8 |
 | num layers | (example default) | 5 | 5 |
 | target layer ids | (example default) | 2 18 33 | 2 18 33 |
@@ -86,8 +85,8 @@ The only deliberate non-default is the **loss combination** — everything else
 mirrors the `examples/train/*` defaults (muon-lr = 10×lr, the repo's derivation),
 pinned explicitly so later default-changing PRs can't silently move the benchmark.
 One adapted lane: no dspark-on-8B example exists, so dspark takes the dflash-8B
-scaffold (seq 8192, 5 layers, target layers `2 18 33`) plus its Markov/confidence
-heads — which is what makes the dspark-vs-dflash read clean (§1).
+scaffold (5 layers, target layers `2 18 33`) plus its Markov/confidence heads —
+which is what makes the dspark-vs-dflash read clean (§1).
 
 ## 4. Metrics — every row reports
 

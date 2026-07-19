@@ -22,15 +22,18 @@ REGEN_OUT=$DATA/regen/regen_train.jsonl
 PREPARED=$DATA/prepared
 MODEL="Qwen/Qwen3-8B"
 PORT=${PORT:-8100}
-EPOCHS=${EPOCHS:-5}
-MAX_SAMPLES=${MAX_SAMPLES:-10000}
+EPOCHS=${EPOCHS:-4}
+MAX_SAMPLES=${MAX_SAMPLES:-6000}
+SEQLEN=${SEQLEN:-16384}          # full multi-turn conversation cap (train + prepare)
+MAX_TOKENS=${MAX_TOKENS:-4096}   # regen: per-response generation cap
+REGEN_LIMIT=${REGEN_LIMIT:-2000} # regen: first N convs of the manifest (0 = all)
 REGEN_GPUS=${REGEN_GPUS:-2,3,6,7}
 SERVE_GPUS=${SERVE_GPUS:-2,3}
 TRAIN_GPUS=${TRAIN_GPUS:-6,7}
-# enable_thinking:false -> Qwen3 emits direct answers, not <think> traces
-# (thinking blows up response length, truncates at max_tokens, and trains the
-# drafter on reasoning tokens we don't serve). WT-1 regen is non-thinking.
-SAMPLING='{"temperature":0.6,"top_p":0.95,"seed":0,"chat_template_kwargs":{"enable_thinking":false}}'
+# enable_thinking:true -> Qwen3 emits <think> traces then the answer; the drafter
+# must learn to draft thinking tokens if the target serves with thinking on. Heavier
+# (long generations), so seq/max_tokens are larger and N is smaller for calibration.
+SAMPLING=${SAMPLING:-'{"temperature":0.6,"top_p":0.95,"seed":0,"chat_template_kwargs":{"enable_thinking":true}}'}
 VLLM_BIN=$(dirname "$VLLM_PY")  # worker JIT needs `ninja` from the venv bin on PATH
 
 RUN=${1:-$WT/runs/$(date +%Y%m%d)-calib}
@@ -107,9 +110,13 @@ trap cleanup EXIT
 status "=== WT-1 calibration start (run=$(basename "$RUN")) ==="
 jset "$RUN/env.json" spec_sha "$(git -C "$SPEC" rev-parse --short HEAD 2>/dev/null)"
 jset "$RUN/env.json" wt_sha   "$(git -C "$WT"   rev-parse --short HEAD 2>/dev/null)"
-jset "$RUN/env.json" n_conversations "$(wc -l < "$DATA/train.jsonl")" int
+TOTAL_CONVS=$(wc -l < "$DATA/train.jsonl")
+jset "$RUN/env.json" n_conversations "$([ "$REGEN_LIMIT" -gt 0 ] && echo "$REGEN_LIMIT" || echo "$TOTAL_CONVS")" int
 jset "$RUN/env.json" max_samples "$MAX_SAMPLES" int
 jset "$RUN/env.json" epochs "$EPOCHS" int
+jset "$RUN/env.json" seq_length "$SEQLEN" int
+jset "$RUN/env.json" regen_max_tokens "$MAX_TOKENS" int
+jset "$RUN/env.json" thinking "$(echo "$SAMPLING" | grep -q 'enable_thinking":true' && echo on || echo off)"
 jset "$RUN/env.json" loss_fn '{"ce":0.1,"tv":0.9}'
 jset "$RUN/env.json" gpus "regen=$REGEN_GPUS serve=$SERVE_GPUS train=$TRAIN_GPUS"
 
@@ -125,7 +132,7 @@ if [ ! -f "$RUN/.regen.done" ]; then
     --endpoint "http://127.0.0.1:$PORT/v1/chat/completions" \
     --outfile "$REGEN_OUT" \
     --sampling-params "$SAMPLING" \
-    --max-tokens 2048 --concurrency 64 --resume \
+    --max-tokens "$MAX_TOKENS" --limit "$REGEN_LIMIT" --concurrency 64 --resume \
     > "$RUN/regen.log" 2>&1
   rc=$?
   jset "$RUN/timing.json" regen_s "$(( $(date +%s) - t0 ))" int
@@ -142,7 +149,7 @@ if [ ! -f "$RUN/.prepare.done" ]; then
   t0=$(date +%s)
   ( cd "$SPEC" && CUDA_VISIBLE_DEVICES="" HF_HUB_OFFLINE=1 "$BASE_PY" scripts/prepare_data.py \
       --model "$MODEL" --data "$REGEN_OUT" --output "$PREPARED" \
-      --max-samples "$MAX_SAMPLES" --seq-length 8192 --overwrite ) \
+      --max-samples "$MAX_SAMPLES" --seq-length "$SEQLEN" --overwrite ) \
       > "$RUN/prepare.log" 2>&1
   rc=$?
   jset "$RUN/timing.json" prepare_s "$(( $(date +%s) - t0 ))" int
@@ -179,7 +186,7 @@ train_lane() {
       --epochs "$EPOCHS" \
       --loss-fn '{"ce": 0.1, "tv": 0.9}' \
       --optimizer muon \
-      --total-seq-len 8192 \
+      --total-seq-len "$SEQLEN" \
       --logger tensorboard --log-dir "$ldir/tb" --log-freq 10 \
       --on-missing generate --on-generate delete \
       "$@" ) > "$ldir/train.log" 2>&1

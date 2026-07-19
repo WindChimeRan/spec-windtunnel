@@ -86,10 +86,13 @@ def main() -> None:
     ap.add_argument("--sampling-params", default='{"temperature":0.6,"top_p":0.95,"seed":0}')
     ap.add_argument("--max-tokens", type=int, default=2048)
     ap.add_argument("--concurrency", type=int, default=64)
+    ap.add_argument("--limit", type=int, default=0, help="cap to first N convs (0=all)")
     ap.add_argument("--resume", action="store_true")
     args = ap.parse_args()
 
     rows = load_rows(args.data_file)
+    if args.limit and args.limit < len(rows):
+        rows = rows[: args.limit]
     print(f"[regen_wt] loaded {len(rows)} conversations from {args.data_file}", flush=True)
 
     module = load_regen_module(args.regen_script)

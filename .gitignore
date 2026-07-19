@@ -1,0 +1,12 @@
+# Heavy / transient run artifacts — regenerable, never committed.
+# Per CONTRACT §7 we DO commit the lightweight per-run results
+# (board.json, SUMMARY.md, env.json, timing.json, config.json, metrics.jsonl);
+# everything below is excluded.
+runs/**/checkpoints/
+runs/**/tb/
+runs/**/*.log
+runs/**/mem.jsonl
+runs/**/.server.pid
+runs/**/.*.done
+__pycache__/
+*.pyc
