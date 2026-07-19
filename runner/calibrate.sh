@@ -41,6 +41,13 @@ mkdir -p "$RUN"
 export HF_HOME=/mnt/nvme-data/engine/ranran/download/hf
 export HF_HUB_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false
+# Keep compile/cache spew off the small /tmp (rhel-root); nvme has the room.
+export TORCHINDUCTOR_CACHE_DIR=/mnt/nvme-data/engine/ranran/download/cache/torchinductor
+export TRITON_CACHE_DIR=/mnt/nvme-data/engine/ranran/download/cache/triton
+export VLLM_CACHE_ROOT=/mnt/nvme-data/engine/ranran/download/cache/vllm
+mkdir -p "$TORCHINDUCTOR_CACHE_DIR" "$TRITON_CACHE_DIR" "$VLLM_CACHE_ROOT"
+HSPATH=${HSPATH:-/mnt/nvme-data/engine/ranran/download/windtunnel/hs_online}
+mkdir -p "$HSPATH"
 MEM_PID=""
 
 status() { echo "[$(date +%H:%M:%S)] $*"; echo "- \`$(date +%H:%M:%S)\` $*" >> "$RUN/STATUS.md"; }
@@ -58,15 +65,26 @@ PY
 }
 
 # ---- vLLM lifecycle ----
-launch_server() {  # launch_server GPUS DP LOGFILE
-  local gpus=$1 dp=$2 logf=$3
-  status "launch vLLM: gpus=$gpus dp=$dp port=$PORT -> $(basename "$logf")"
-  env -u VLLM_PORT CUDA_VISIBLE_DEVICES="$gpus" HF_HUB_OFFLINE=1 \
-    PATH="$VLLM_BIN:$PATH" \
-    setsid "$VLLM_PY" "$SPEC/scripts/launch_vllm.py" "$MODEL" \
-      --target-layer-ids 2 18 33 -- \
-      --data-parallel-size "$dp" --port "$PORT" --gpu-memory-utilization 0.85 \
-      > "$logf" 2>&1 < /dev/null &
+launch_server() {  # launch_server GPUS DP LOGFILE MODE(regen|train)
+  local gpus=$1 dp=$2 logf=$3 mode=${4:-train}
+  status "launch vLLM ($mode): gpus=$gpus dp=$dp port=$PORT -> $(basename "$logf")"
+  if [ "$mode" = "regen" ]; then
+    # Plain chat server. Regen needs no hidden-state extraction; extracting it
+    # dumps HS to disk on every request with no consumer to delete them, which
+    # flooded /tmp and failed the requests on the first attempt.
+    env -u VLLM_PORT CUDA_VISIBLE_DEVICES="$gpus" HF_HUB_OFFLINE=1 PATH="$VLLM_BIN:$PATH" \
+      setsid "$VLLM_PY" -m vllm.entrypoints.cli.main serve "$MODEL" \
+        --data-parallel-size "$dp" --port "$PORT" --gpu-memory-utilization 0.85 \
+        > "$logf" 2>&1 < /dev/null &
+  else
+    # Training server: hidden-state extraction on nvme; --on-generate delete
+    # (train.py) keeps it bounded to in-flight batches.
+    env -u VLLM_PORT CUDA_VISIBLE_DEVICES="$gpus" HF_HUB_OFFLINE=1 PATH="$VLLM_BIN:$PATH" \
+      setsid "$VLLM_PY" "$SPEC/scripts/launch_vllm.py" "$MODEL" \
+        --target-layer-ids 2 18 33 --hidden-states-path "$HSPATH" -- \
+        --data-parallel-size "$dp" --port "$PORT" --gpu-memory-utilization 0.85 \
+        > "$logf" 2>&1 < /dev/null &
+  fi
   echo $! > "$RUN/.server.pid"
 }
 kill_server() {
@@ -123,7 +141,7 @@ jset "$RUN/env.json" gpus "regen=$REGEN_GPUS serve=$SERVE_GPUS train=$TRAIN_GPUS
 # ---- phase 0: regen ----
 if [ ! -f "$RUN/.regen.done" ]; then
   status "phase0: on-policy regen"
-  launch_server "$REGEN_GPUS" 4 "$RUN/vllm_regen.log"
+  launch_server "$REGEN_GPUS" 4 "$RUN/vllm_regen.log" regen
   wait_health 900 || die "regen server not healthy"
   t0=$(date +%s)
   "$BASE_PY" "$WT/runner/regen_wt.py" \
@@ -161,7 +179,7 @@ else status "phase1: prepare already done (skip)"; fi
 # ---- phase 2: training server ----
 if ! curl -sf "http://localhost:$PORT/health" >/dev/null 2>&1; then
   status "phase2: launch training server"
-  launch_server "$SERVE_GPUS" 2 "$RUN/vllm_train.log"
+  launch_server "$SERVE_GPUS" 2 "$RUN/vllm_train.log" train
   wait_health 900 || die "training server not healthy"
 else status "phase2: server already healthy"; fi
 
@@ -182,6 +200,7 @@ train_lane() {
       --data-path "$PREPARED" \
       --vllm-endpoint "http://localhost:$PORT/v1" \
       --save-path "$ldir/checkpoints" \
+      --hidden-states-path "$HSPATH" \
       --draft-vocab-size 32000 \
       --epochs "$EPOCHS" \
       --loss-fn '{"ce": 0.1, "tv": 0.9}' \
