@@ -22,7 +22,7 @@ REGEN_OUT=$DATA/regen/regen_train.jsonl
 PREPARED=$DATA/prepared
 MODEL="Qwen/Qwen3-8B"
 PORT=${PORT:-8100}
-EPOCHS=${EPOCHS:-4}
+EPOCHS=${EPOCHS:-10}
 MAX_SAMPLES=${MAX_SAMPLES:-6000}
 SEQLEN=${SEQLEN:-16384}          # full multi-turn conversation cap (train + prepare)
 MAX_TOKENS=${MAX_TOKENS:-4096}   # regen: per-response generation cap
@@ -172,7 +172,9 @@ if [ ! -f "$RUN/.prepare.done" ]; then
   rc=$?
   jset "$RUN/timing.json" prepare_s "$(( $(date +%s) - t0 ))" int
   [ $rc -eq 0 ] || die "prepare failed rc=$rc (see prepare.log)"
-  status "phase1: prepare done"
+  # HS cache is keyed by prepared-sample index; new data invalidates it.
+  rm -f "$HSPATH"/*.safetensors 2>/dev/null || true
+  status "phase1: prepare done (cleared stale HS cache)"
   touch "$RUN/.prepare.done"
 else status "phase1: prepare already done (skip)"; fi
 
@@ -207,7 +209,7 @@ train_lane() {
       --optimizer muon \
       --total-seq-len "$SEQLEN" \
       --logger tensorboard --log-dir "$ldir/tb" --log-freq 10 \
-      --on-missing generate --on-generate delete \
+      --on-missing generate --on-generate cache \
       "$@" ) > "$ldir/train.log" 2>&1
   local rc=$?
   jset "$RUN/timing.json" "${lane}_train_s" "$(( $(date +%s) - t0 ))" int

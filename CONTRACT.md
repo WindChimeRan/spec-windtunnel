@@ -64,9 +64,16 @@ Common to all lanes:
 --muon-momentum 0.95 --muon-weight-decay 0.1 --muon-ns-steps 5
 --muon-adjust-lr-fn match_rms_adamw
 --draft-vocab-size 32000
---epochs ⏳          # multi-epoch on purpose: the drafter should approach
-                     # convergence on the small train set (see §4)
+--epochs 10          # 4 epochs was not converged (EAL still climbing); 10 to
+                     # approach the near-convergence regime the board wants (§4).
 seed: 0 (baseline uses 0/1/2, see §6)
+
+Online hidden states are **cached and shared** (`--on-generate cache`, one
+`hidden_states_path` on nvme). They depend only on (verifier, target layers,
+prepared data) — none of the per-lane differences — so lane 1 generates them
+once and every later epoch *and every other lane* reads the cache. Measured
+≈43× faster per cached epoch (generate→read). The cache is cleared whenever the
+data is re-prepared (it is keyed by prepared-sample index).
 ```
 
 Per-lane:
